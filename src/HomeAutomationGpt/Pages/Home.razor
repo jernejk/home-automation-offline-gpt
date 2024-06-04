@@ -1,0 +1,218 @@
+﻿@* Example prompt: Say "It's really cold" and set A/C to 23, TV on and light in living room on as well *@
+@page "/"
+@using System.Text.Json
+@using System.Text
+@using System.Runtime.Serialization
+
+<PageTitle>Home Automation</PageTitle>
+
+<div class="container">
+    <div class="sidebar">
+        <h3>Devices</h3>
+        <ul>
+            @foreach (var device in Devices)
+            {
+                <li>
+                    <span>@device.Name</span>
+                    <span>@(device.IsOn ? "🟢" : "🔴")</span>
+                    @if (device.Value.HasValue)
+                    {
+                        <span>@device.Value.Value</span>
+                    }
+                </li>
+            }
+        </ul>
+        <input @bind="NewDeviceName" placeholder="Enter device name" class="input-text" />
+        <button @onclick="AddDevice" class="btn">Add Device</button>
+    </div>
+    <div class="main-content">
+        <textarea @bind="Command" placeholder="Enter command" class="textarea"></textarea>
+        <button @onclick="SendCommand" class="btn">Send</button>
+        <div>
+            @if (!string.IsNullOrEmpty(SpeakText))
+            {
+                <h4>Speak:</h4>
+                <p>@SpeakText</p>
+            }
+        </div>
+        <div class="debug-section">
+            <input type="checkbox" @bind="ShowDebug" /> Show debug
+            @if (ShowDebug || IsRequestFailed)
+            {
+                <div class="debug-box">
+                    <h4>Debug:</h4>
+                    <p>@Debug</p>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    private List<Device> Devices { get; set; } = new List<Device>
+    {
+        new Device { Name = "TV" },
+        new Device { Name = "Kitchen lights" },
+        new Device { Name = "A/C" },
+        new Device { Name = "Living room lights" }
+    };
+
+    private string NewDeviceName { get; set; }
+    private string Command { get; set; }
+    private string Debug { get; set; }
+    private string SpeakText { get; set; }
+    private bool ShowDebug { get; set; } = false;
+    private bool IsRequestFailed { get; set; } = false;
+
+    private void AddDevice()
+    {
+        if (!string.IsNullOrWhiteSpace(NewDeviceName))
+        {
+            Devices.Add(new Device { Name = NewDeviceName });
+            NewDeviceName = string.Empty;
+        }
+    }
+
+    private async Task SendCommand()
+    {
+        SpeakText = string.Empty; // Clear the speak text before sending a new command
+        Debug = await ExecuteCommandAsync(Command);
+        UpdateDeviceStates(Debug);
+    }
+
+    private async Task<string> ExecuteCommandAsync(string command)
+    {
+        var systemContent = "You're a home assistant AI and you always reply only with JSON in this format. Here are the list of supported devices: " +
+                            string.Join(", ", Devices.Select(d => d.Name)) + ". Provide a JSON response for the command given. Example: [{ \"Device\": \"TV\", \"Action\": \"On\" }, {\"Action\": \"Speak\", \"Text\": \"Dinner is ready\"}, {\"Action\":\"SetValue\", \"Device\": \"A/C\", \"Value\": 18 }]";
+
+        var requestContent = new
+        {
+            model = "model-identifier",
+            messages = new[]
+            {
+                new { role = "system", content = systemContent },
+                new { role = "user", content = command }
+            },
+            temperature = 0.7,
+            max_tokens = -1,
+            stream = false
+        };
+
+        var jsonContent = new StringContent(JsonSerializer.Serialize(requestContent), Encoding.UTF8, "application/json");
+
+        using var httpClient = new HttpClient();
+        var response = await httpClient.PostAsync("http://localhost:1234/v1/chat/completions", jsonContent);
+
+        if (response.IsSuccessStatusCode)
+        {
+            IsRequestFailed = false;
+            var responseContent = await response.Content.ReadAsStringAsync();
+            return responseContent;
+        }
+        else
+        {
+            IsRequestFailed = true;
+            ShowDebug = true; // Show debug information if the request fails
+            return $"Error: {response.ReasonPhrase}";
+        }
+    }
+
+    private void UpdateDeviceStates(string jsonResponse)
+    {
+        try
+        {
+            var response = JsonSerializer.Deserialize<ChatResponse>(jsonResponse);
+            var content = response.choices[0].message.content;
+
+            // Clean up the response content to get valid JSON array
+            content = content.Trim().Replace("\\\"", "\"");
+            if (content.Contains("```"))
+            {
+                content = content.Replace("```json", "");
+
+                // Delete everything after ```
+                var index = content.IndexOf("```", StringComparison.OrdinalIgnoreCase);
+                if (index >= 0)
+                {
+                    content = content.Substring(0, index);
+                }
+            }
+
+            content = content.Replace("\n", "").Trim().TrimStart('[').TrimEnd(']');
+            content = $"[{content}]";
+
+            var actions = JsonSerializer.Deserialize<List<DeviceAction>>(content);
+
+            foreach (var action in actions)
+            {
+                if (!string.IsNullOrEmpty(action.Device))
+                {
+                    var device = Devices.FirstOrDefault(d => d.Name.Equals(action.Device, StringComparison.OrdinalIgnoreCase));
+                    if (device != null)
+                    {
+                        switch (action.Action.ToLower())
+                        {
+                            case "turn on":
+                            case "on":
+                                device.IsOn = true;
+                                break;
+                            case "turn off":
+                            case "off":
+                                device.IsOn = false;
+                                device.Value = null; // Clear value when device is turned off
+                                break;
+                            case "setvalue":
+                                device.Value = action.Value;
+                                device.IsOn = true; // Turn on the device
+                                break;
+                        }
+                    }
+                }
+                else if (action.Action.ToLower() == "speak")
+                {
+                    SpeakText = action.Text;
+                }
+            }
+
+            // Update the UI
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Debug = $"Failed to process response: {ex.Message}";
+            IsRequestFailed = true;
+            ShowDebug = true; // Show debug information if an exception occurs
+        }
+    }
+
+    private class Device
+    {
+        public string Name { get; set; }
+        public bool IsOn { get; set; } = false;
+        public float? Value { get; set; } = null;
+    }
+
+    private class DeviceAction
+    {
+        public string Action { get; set; }
+        public string Device { get; set; }
+        public string Text { get; set; }
+        public float? Value { get; set; }
+    }
+
+    private class ChatResponse
+    {
+        public List<Choice> choices { get; set; }
+
+        public class Choice
+        {
+            public Message message { get; set; }
+        }
+
+        public class Message
+        {
+            public string role { get; set; }
+            public string content { get; set; }
+        }
+    }
+}
