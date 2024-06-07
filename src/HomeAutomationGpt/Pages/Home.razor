@@ -210,7 +210,7 @@
                 }
             }
 
-            content = content.Replace("\n", "").Trim().TrimStart('[').TrimEnd(']');
+            content = content.Replace("\n", "").Trim().TrimStart('=').TrimStart('[').TrimEnd(']');
             content = $"[{content}]";
 
             return JsonSerializer.Deserialize<List<DeviceAction>>(content);
