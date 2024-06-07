@@ -140,10 +140,15 @@
             Response = content;
 
             List<DeviceAction> actions = ParseActions(content);
+            if (actions == null)
+            {
+                Debug = "No actions found in the response";
+                return;
+            }
 
             foreach (var action in actions)
             {
-                if (!string.IsNullOrEmpty(action.Device))
+                if (!string.IsNullOrEmpty(action?.Device))
                 {
                     var device = Devices.FirstOrDefault(d => d.Name.Equals(action.Device, StringComparison.OrdinalIgnoreCase));
                     if (device != null)
