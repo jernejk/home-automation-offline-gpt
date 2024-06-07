@@ -90,8 +90,13 @@
 
     private async Task<string> ExecuteCommandAsync(string command)
     {
-        var systemContent = "You're a home assistant AI and you always reply only with JSON in this format. Here are the list of supported devices: " +
-                            string.Join(", ", Devices.Select(d => d.Name)) + ". Provide a JSON response for the command given. Example: [{ \"Device\": \"TV\", \"Action\": \"On\" }, {\"Action\": \"Speak\", \"Text\": \"Dinner is ready\"}, {\"Action\":\"SetValue\", \"Device\": \"A/C\", \"Value\": 18 }]";
+        var systemContent = "You're a home assistant AI. Here are the list of supported devices: " +
+                            string.Join(", ", Devices.Select(d => d.Name)) + ". " +
+                            "Available commands: On, Off, Speak, SetValue\n" +
+                            "You always reply only with a JSON response with a list of commands, do not add any additional text. Example: \n" +
+                            "```json" + 
+                            "[{ \"Device\": \"TV\", \"Action\": \"On\" }, {\"Action\": \"Speak\", \"Text\": \"Dinner is ready\"}, {\"Action\":\"SetValue\", \"Device\": \"A/C\", \"Value\": 18 }]" +
+                            "```";
 
         var requestContent = new
         {
@@ -101,7 +106,7 @@
                 new { role = "system", content = systemContent },
                 new { role = "user", content = command }
             },
-            temperature = 0.7,
+            temperature = 0.6,
             max_tokens = -1,
             stream = false
         };
@@ -133,23 +138,8 @@
             var content = response.choices[0].message.content;
 
             Response = content;
-            content = content.Trim().Replace("\\\"", "\"");
-            if (content.Contains("```"))
-            {
-                content = content.Replace("```json", "");
 
-                // Delete everything after ```
-                var index = content.IndexOf("```", StringComparison.OrdinalIgnoreCase);
-                if (index >= 0)
-                {
-                    content = content.Substring(0, index);
-                }
-            }
-
-            content = content.Replace("\n", "").Trim().TrimStart('[').TrimEnd(']');
-            content = $"[{content}]";
-
-            var actions = JsonSerializer.Deserialize<List<DeviceAction>>(content);
+            List<DeviceAction> actions = ParseActions(content);
 
             foreach (var action in actions)
             {
@@ -191,6 +181,36 @@
             IsRequestFailed = true;
             ShowDebug = true; // Show debug information if an exception occurs
         }
+    }
+
+    private List<DeviceAction> ParseActions(string content)
+    {
+        try
+        {
+            return JsonSerializer.Deserialize<List<DeviceAction>>(content);
+        }
+        catch
+        {
+            // Clean up the response content to get valid JSON array
+            content = content.Trim().Replace("\\\"", "\"");
+            if (content.Contains("```"))
+            {
+                content = content.Replace("```json", "");
+
+                // Delete everything after ```
+                var index = content.IndexOf("```", StringComparison.OrdinalIgnoreCase);
+                if (index >= 0)
+                {
+                    content = content.Substring(0, index);
+                }
+            }
+
+            content = content.Replace("\n", "").Trim().TrimStart('[').TrimEnd(']');
+            content = $"[{content}]";
+
+            return JsonSerializer.Deserialize<List<DeviceAction>>(content);
+        }
+
     }
 
     private class Device
