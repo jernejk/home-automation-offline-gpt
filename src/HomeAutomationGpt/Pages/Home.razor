@@ -42,6 +42,11 @@
                 <div class="debug-box">
                     <h4>Debug:</h4>
                     <p>@Debug</p>
+
+                    <h4>Response:</h4>
+                    <pre>
+                        @Response
+                    </pre>
                 </div>
             }
         </div>
@@ -60,6 +65,7 @@
     private string NewDeviceName { get; set; }
     private string Command { get; set; }
     private string Debug { get; set; }
+    private string Response { get; set; }
     private string SpeakText { get; set; }
     private bool ShowDebug { get; set; } = false;
     private bool IsRequestFailed { get; set; } = false;
@@ -75,6 +81,8 @@
 
     private async Task SendCommand()
     {
+        Debug = string.Empty; // Clear the debug information before sending a new command
+        Response = string.Empty; // Clear the response before sending a new command
         SpeakText = string.Empty; // Clear the speak text before sending a new command
         Debug = await ExecuteCommandAsync(Command);
         UpdateDeviceStates(Debug);
@@ -124,7 +132,7 @@
             var response = JsonSerializer.Deserialize<ChatResponse>(jsonResponse);
             var content = response.choices[0].message.content;
 
-            // Clean up the response content to get valid JSON array
+            Response = content;
             content = content.Trim().Replace("\\\"", "\"");
             if (content.Contains("```"))
             {
