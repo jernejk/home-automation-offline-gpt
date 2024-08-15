@@ -3,6 +3,8 @@
 @using System.Text.Json
 @using System.Text
 @using System.Runtime.Serialization
+@using HomeAutomationGpt.Models
+@using HomeAutomationGpt.Services
 
 <PageTitle>Home Automation</PageTitle>
 
@@ -62,11 +64,11 @@
         new Device { Name = "Living room lights" }
     };
 
-    private string NewDeviceName { get; set; }
-    private string Command { get; set; }
-    private string Debug { get; set; }
-    private string Response { get; set; }
-    private string SpeakText { get; set; }
+    private string? NewDeviceName { get; set; }
+    private string? Command { get; set; }
+    private string? Debug { get; set; }
+    private string? Response { get; set; }
+    private string? SpeakText { get; set; }
     private bool ShowDebug { get; set; } = false;
     private bool IsRequestFailed { get; set; } = false;
 
@@ -84,94 +86,66 @@
         Debug = string.Empty; // Clear the debug information before sending a new command
         Response = string.Empty; // Clear the response before sending a new command
         SpeakText = string.Empty; // Clear the speak text before sending a new command
-        Debug = await ExecuteCommandAsync(Command);
-        UpdateDeviceStates(Debug);
-    }
 
-    private async Task<string> ExecuteCommandAsync(string command)
-    {
-        var systemContent = "You're a home assistant AI. Here are the list of supported devices: " +
-                            string.Join(", ", Devices.Select(d => d.Name)) + ". " +
-                            "Available commands: On, Off, Speak, SetValue\n" +
-                            "You always reply only with a JSON response with a list of commands, do not add any additional text. Example: \n" +
-                            "```json" + 
-                            "[{ \"Device\": \"TV\", \"Action\": \"On\" }, {\"Action\": \"Speak\", \"Text\": \"Dinner is ready\"}, {\"Action\":\"SetValue\", \"Device\": \"A/C\", \"Value\": 18 }]" +
-                            "```";
-
-        var requestContent = new
+        if (string.IsNullOrWhiteSpace(Command))
         {
-            model = "model-identifier",
-            messages = new[]
-            {
-                new { role = "system", content = systemContent },
-                new { role = "user", content = command }
-            },
-            temperature = 0.6,
-            max_tokens = -1,
-            stream = false
-        };
-
-        var jsonContent = new StringContent(JsonSerializer.Serialize(requestContent), Encoding.UTF8, "application/json");
-
-        using var httpClient = new HttpClient();
-        var response = await httpClient.PostAsync("http://localhost:1234/v1/chat/completions", jsonContent);
-
-        if (response.IsSuccessStatusCode)
-        {
-            IsRequestFailed = false;
-            var responseContent = await response.Content.ReadAsStringAsync();
-            return responseContent;
+            Debug = "Command is empty";
+            return;
         }
-        else
+
+        DeviceCommandResponse result = await HomeAssistanceService.ExecuteCommandAsync(Command, Devices);
+        Response = result.ChatResponse;
+
+        if (!string.IsNullOrWhiteSpace(result.Errors) || result.DeviceActions == null)
         {
+            Debug = result.Errors;
+
             IsRequestFailed = true;
-            ShowDebug = true; // Show debug information if the request fails
-            return $"Error: {response.ReasonPhrase}";
+            ShowDebug = true;
+            return;
         }
+
+        UpdateDeviceStates(result.DeviceActions);
     }
 
-    private void UpdateDeviceStates(string jsonResponse)
+    private void UpdateDeviceStates(List<DeviceAction> deviceActions)
     {
         try
         {
-            var response = JsonSerializer.Deserialize<ChatResponse>(jsonResponse);
-            var content = response.choices[0].message.content;
-
-            Response = content;
-
-            List<DeviceAction> actions = ParseActions(content);
-            if (actions == null)
-            {
-                Debug = "No actions found in the response";
-                return;
-            }
-
-            foreach (var action in actions)
+            foreach (DeviceAction action in deviceActions)
             {
                 if (!string.IsNullOrEmpty(action?.Device))
                 {
-                    var device = Devices.FirstOrDefault(d => d.Name.Equals(action.Device, StringComparison.OrdinalIgnoreCase));
+                    var device = FindDevice(action.Device);
                     if (device != null)
                     {
-                        switch (action.Action.ToLower())
+                        switch (action?.Action?.ToLower())
                         {
                             case "turn on":
+                            case "turnon":
                             case "on":
                                 device.IsOn = true;
                                 break;
+
                             case "turn off":
+                            case "turnoff":
                             case "off":
                                 device.IsOn = false;
                                 device.Value = null; // Clear value when device is turned off
                                 break;
+
+                            // Sometimes changing temperature responds with "SetTemperature".
+                            // Gemma sometimes uses "Set" instead of "SetValue".
+                            case "set":
                             case "setvalue":
+                            case "settemperature":
                                 device.Value = action.Value;
                                 device.IsOn = true; // Turn on the device
                                 break;
                         }
                     }
                 }
-                else if (action.Action.ToLower() == "speak")
+                else if (action?.Action?.ToLower() == "speak" && !string.IsNullOrWhiteSpace(action.Text))
                 {
                     SpeakText = action.Text;
                 }
@@ -188,64 +162,21 @@
         }
     }
 
-    private List<DeviceAction> ParseActions(string content)
+    public Device? FindDevice(string deviceName)
     {
-        try
+        if (string.IsNullOrWhiteSpace(deviceName))
         {
-            return JsonSerializer.Deserialize<List<DeviceAction>>(content);
-        }
-        catch
-        {
-            // Clean up the response content to get valid JSON array
-            content = content.Trim().Replace("\\\"", "\"");
-            if (content.Contains("```"))
-            {
-                content = content.Replace("```json", "");
-
-                // Delete everything after ```
-                var index = content.IndexOf("```", StringComparison.OrdinalIgnoreCase);
-                if (index >= 0)
-                {
-                    content = content.Substring(0, index);
-                }
-            }
-
-            content = content.Replace("\n", "").Trim().TrimStart('=').TrimStart('[').TrimEnd(']');
-            content = $"[{content}]";
-
-            return JsonSerializer.Deserialize<List<DeviceAction>>(content);
+            return null;
         }
 
-    }
-
-    private class Device
-    {
-        public string Name { get; set; }
-        public bool IsOn { get; set; } = false;
-        public float? Value { get; set; } = null;
-    }
-
-    private class DeviceAction
-    {
-        public string Action { get; set; }
-        public string Device { get; set; }
-        public string Text { get; set; }
-        public float? Value { get; set; }
-    }
-
-    private class ChatResponse
-    {
-        public List<Choice> choices { get; set; }
-
-        public class Choice
+        Device? foundDevice = Devices.FirstOrDefault(d => d.Name.Equals(deviceName, StringComparison.OrdinalIgnoreCase));
+        if (foundDevice != null)
         {
-            public Message message { get; set; }
+            return foundDevice;
         }
 
-        public class Message
-        {
-            public string role { get; set; }
-            public string content { get; set; }
-        }
+        // Sometimes, for deviceName "A/C" it responds with "AC".
+        deviceName = deviceName.Replace("/", string.Empty);
+        return Devices.FirstOrDefault(d => d.Name.Replace("/", string.Empty).Equals(deviceName, StringComparison.OrdinalIgnoreCase));
     }
 }
