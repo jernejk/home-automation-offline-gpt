@@ -4,11 +4,11 @@ using System.Text;
 
 namespace HomeAutomationGpt.Services;
 
-public static class HomeAssistanceService
+public class HomeAssistanceService : IHomeAssistanceService
 {
     public const string ChatUrl = "http://localhost:1234/v1/chat/completions";
 
-    public static async Task<DeviceCommandResponse> ExecuteCommandAsync(string command, List<Device> devices)
+    public async Task<DeviceCommandResponse> ExecuteCommandAsync(string command, List<Device> devices, bool cleanUpJsonWell = true)
     {
         var systemContent = "You're a home assistant AI. Here are the list of supported devices: " +
                             string.Join(", ", devices.Select(d => d.Name)) + ". " +
@@ -42,7 +42,11 @@ public static class HomeAssistanceService
         }
 
         string? responseContent = await response.Content.ReadAsStringAsync();
-        string? deviceActionJson = JsonCleanUp(responseContent);
+
+        // For demo purposes, allow simple clean up to demonstrate how chaotic LLMs can be.
+        string? deviceActionJson = cleanUpJsonWell
+            ? JsonCleanUp(responseContent)
+            : SimpleCleanUp(responseContent);
 
         if (string.IsNullOrWhiteSpace(deviceActionJson))
         {
@@ -127,6 +131,24 @@ public static class HomeAssistanceService
             .TrimEnd(']');
 
         content = $"[{content}]";
+        return content;
+    }
+
+    private static string SimpleCleanUp(string content)
+    {
+        // LLM Studio like to contain JSON responses within ```
+        if (content.Contains("```"))
+        {
+            content = content.Replace("```json", "");
+
+            // Delete everything after ```
+            var index = content.IndexOf("```", StringComparison.OrdinalIgnoreCase);
+            if (index >= 0)
+            {
+                content = content.Substring(0, index);
+            }
+        }
+
         return content;
     }
 
