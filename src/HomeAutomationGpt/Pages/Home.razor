@@ -56,6 +56,8 @@
 </div>
 
 @code {
+    private IHomeAssistanceService _has = new HomeAssistanceServiceV3();
+
     private List<Device> Devices { get; set; } = new List<Device>
     {
         new Device { Name = "TV" },
@@ -93,7 +95,7 @@
             return;
         }
 
-        DeviceCommandResponse result = await HomeAssistanceService.ExecuteCommandAsync(Command, Devices);
+        DeviceCommandResponse result = await _has.ExecuteCommandAsync(Command, Devices);
         Response = result.ChatResponse;
 
         if (!string.IsNullOrWhiteSpace(result.Errors) || result.DeviceActions == null)
