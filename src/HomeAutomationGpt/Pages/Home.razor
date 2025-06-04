@@ -30,6 +30,7 @@
     <div class="main-content">
         <textarea @bind="Command" placeholder="Enter command" class="textarea"></textarea>
         <button @onclick="SendCommand" class="btn">Send</button>
+        <button @onclick="StartSpeechToText" class="btn">🎤 Speak</button>
         <div>
             @if (!string.IsNullOrEmpty(SpeakText))
             {
@@ -56,7 +57,10 @@
 </div>
 
 @code {
-    private IHomeAssistanceService _has = new HomeAssistanceServiceV3();
+    // Uses the latest AI client with function calling
+    private IHomeAssistanceService _has = new HomeAssistanceServiceV5();
+    [Inject]
+    private IJSRuntime JS { get; set; } = default!;
 
     private List<Device> Devices { get; set; } = new List<Device>
     {
@@ -73,6 +77,19 @@
     private string? SpeakText { get; set; }
     private bool ShowDebug { get; set; } = false;
     private bool IsRequestFailed { get; set; } = false;
+
+    private async Task StartSpeechToText()
+    {
+        try
+        {
+            var text = await JS.InvokeAsync<string>("speechToText.start");
+            Command = text;
+        }
+        catch (Exception ex)
+        {
+            Debug = ex.Message;
+        }
+    }
 
     private void AddDevice()
     {
