@@ -5,6 +5,7 @@
 @using System.Runtime.Serialization
 @using HomeAutomationGpt.Models
 @using HomeAutomationGpt.Services
+@using Microsoft.Extensions.AI
 
 <PageTitle>Home Automation</PageTitle>
 
@@ -58,9 +59,16 @@
 
 @code {
     // Uses the latest AI client with function calling
-    private IHomeAssistanceService _has = new HomeAssistanceServiceV5();
+    [Inject]
+    private IChatClient ChatClient { get; set; } = default!;
+    private IHomeAssistanceService _has;
     [Inject]
     private IJSRuntime JS { get; set; } = default!;
+
+    protected override void OnInitialized()
+    {
+        _has = new HomeAssistanceServiceV5(ChatClient);
+    }
 
     private List<Device> Devices { get; set; } = new List<Device>
     {

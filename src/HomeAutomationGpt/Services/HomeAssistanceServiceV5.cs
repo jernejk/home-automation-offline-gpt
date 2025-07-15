@@ -1,7 +1,5 @@
 using HomeAutomationGpt.Models;
 using Microsoft.Extensions.AI;
-using Microsoft.Extensions.AI.OpenAI;
-using OpenAI.Chat;
 
 namespace HomeAutomationGpt.Services;
 
@@ -23,10 +21,10 @@ public class HomeAssistanceServiceV5 : IHomeAssistanceService
         return $"Executed {action} on {deviceName}";
     }
 
-    public HomeAssistanceServiceV5()
+    // Accept IChatClient via dependency injection
+    public HomeAssistanceServiceV5(IChatClient client)
     {
-        var chatClient = new ChatClient(new Uri(HomeAssistanceService.ChatUrl), "model-identifier");
-        _client = new OpenAIChatClient(chatClient).AsIChatClient();
+        _client = client;
     }
 
     public async Task<DeviceCommandResponse> ExecuteCommandAsync(string command, List<Device> devices, bool cleanUpJsonWell = true)
@@ -37,24 +35,25 @@ public class HomeAssistanceServiceV5 : IHomeAssistanceService
         {
             Tools =
             [
-                AIFunctionFactory.Create(ExecuteDeviceAction,
-                "ExecuteDeviceAction",
-                "Controls a device by performing the specified action with optional parameters.")
+                AIFunctionFactory.Create(
+                    ExecuteDeviceAction,
+                    "ExecuteDeviceAction",
+                    "Controls a device by performing the specified action with optional parameters.")
             ]
         };
 
         var systemPrompt = "You're a home assistant AI. Use ExecuteDeviceAction to control devices.";
-        var messages = new[]
+        var messages = new List<ChatMessage>
         {
-            new ChatMessage(ChatRole.System, systemPrompt),
-            new ChatMessage(ChatRole.User, command)
+            new(ChatRole.System, systemPrompt),
+            new(ChatRole.User, command)
         };
 
         var response = await _client.GetResponseAsync(messages, options);
 
         return new DeviceCommandResponse
         {
-            ChatResponse = response.Message,
+            ChatResponse = response.ToString(),
             DeviceActions = _actions
         };
     }

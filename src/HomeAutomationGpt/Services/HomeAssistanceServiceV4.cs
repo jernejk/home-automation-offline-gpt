@@ -1,7 +1,5 @@
 using HomeAutomationGpt.Models;
 using Microsoft.Extensions.AI;
-using Microsoft.Extensions.AI.OpenAI;
-using OpenAI.Chat;
 
 namespace HomeAutomationGpt.Services;
 
@@ -9,11 +7,10 @@ public class HomeAssistanceServiceV4 : IHomeAssistanceService
 {
     private readonly IChatClient _client;
 
-    public HomeAssistanceServiceV4()
+    // Accept IChatClient via dependency injection
+    public HomeAssistanceServiceV4(IChatClient client)
     {
-        // Use the new OpenAI client targeting the local LM Studio server
-        var chatClient = new ChatClient(new Uri(HomeAssistanceService.ChatUrl), "model-identifier");
-        _client = new OpenAIChatClient(chatClient).AsIChatClient();
+        _client = client;
     }
 
     public async Task<DeviceCommandResponse> ExecuteCommandAsync(string command, List<Device> devices, bool cleanUpJsonWell = true)
@@ -22,16 +19,17 @@ public class HomeAssistanceServiceV4 : IHomeAssistanceService
                             string.Join(", ", devices.Select(d => d.Name)) + "." +
                             "Available commands: On, Off, Speak, SetValue";
 
-        var messages = new[]
+        var messages = new List<ChatMessage>
         {
-            new ChatMessage(ChatRole.System, systemPrompt),
-            new ChatMessage(ChatRole.User, command)
+            new(ChatRole.System, systemPrompt),
+            new(ChatRole.User, command)
         };
 
         ChatOptions options = new();
         var response = await _client.GetResponseAsync(messages, options);
 
         // Pass the response back to the existing parser
-        return await new HomeAssistanceService().ExecuteCommandAsync(response.Message, devices, cleanUpJsonWell);
+        // Use response.ToString() as the chat response content
+        return await new HomeAssistanceService().ExecuteCommandAsync(response.ToString(), devices, cleanUpJsonWell);
     }
 }
