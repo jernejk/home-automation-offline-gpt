@@ -1,6 +1,6 @@
 # Home Automation Offline GPT
 
-This demo showcases how to use offline GPT with the help of LM Studio within a .NET 8 Blazor app.
+This demo showcases how to use offline GPT with the help of LM Studio within a .NET 9 Blazor app that takes advantage of the new `Microsoft.Extensions.AI` APIs. It now uses built-in function invocation so actions are created directly in code instead of parsing JSON.
 
 ## Setup LM Studio
 
@@ -21,7 +21,7 @@ This demo showcases how to use offline GPT with the help of LM Studio within a .
 
 ## Setup Blazor App
 
-1. Ensure you have the latest .NET 8 SDK installed. (Windows Winget: `winget install dotnet-sdk-8`)
+1. Ensure you have the latest .NET 9 SDK installed. (Windows Winget: `winget install dotnet-sdk-9`)
 2. Run the application in Visual Studio or use `dotnet run` in the `src/HomeAutomationGpt` folder.
 
 ![alt text](/img/blazor-demo-1.png)
@@ -48,3 +48,5 @@ Try various prompts to see the home automation in action:
 - "Turn off all devices but keep the A/C on."
 - "I need more light."
 - "I'm feeling cold."
+
+You can also click the **Speak** button in the demo to dictate commands using your microphone.
