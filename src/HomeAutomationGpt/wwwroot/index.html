@@ -10,6 +10,43 @@
     <link rel="stylesheet" href="css/app.css" />
     <link rel="icon" type="image/png" href="favicon.png" />
     <link href="HomeAutomationGpt.styles.css" rel="stylesheet" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <style>
+        /* Simple modern layout for the demo */
+        .ha-grid{display:grid;gap:1rem;grid-template-columns:320px 1fr 380px;align-items:start}
+        @media (max-width:1200px){.ha-grid{grid-template-columns:1fr}}
+        .panel{background:#fff;border-radius:12px;box-shadow:0 2px 12px rgba(0,0,0,.06);padding:1rem}
+        .panel.devices{position:sticky;top:1rem;height:calc(100vh - 2rem);overflow:auto}
+        .panel.control{min-height:300px}
+        .panel.activity{max-height:calc(100vh - 2rem);overflow:auto;position:sticky;top:1rem}
+        .panel-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem}
+        .add-device{display:flex;gap:.5rem}
+        .device-list{display:flex;flex-direction:column;gap:.5rem}
+        .device-card{border:1px solid #eee;border-radius:10px;padding:.75rem}
+        .device-row{display:flex;justify-content:space-between;align-items:center}
+        .device-name{font-weight:600}
+        .device-controls{display:flex;align-items:center;gap:.5rem;margin-top:.5rem}
+        .value-chip{background:#f1f5f9;border-radius:999px;padding:.15rem .5rem;font-size:.85rem}
+        .control-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem}
+        .voice-controls{display:flex;align-items:center;gap:.5rem}
+        .voice-status{font-size:.9rem;color:#64748b}
+        .voice-status.on{color:#16a34a}
+        .mic-btn{width:48px;height:48px;border-radius:999px;display:flex;align-items:center;justify-content:center}
+        .quick-prompts{display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:.5rem}
+        .command-box{margin-top:.5rem}
+        .command-actions{display:flex;align-items:center;gap:.5rem;margin-top:.5rem}
+        .command-actions .spacer{flex:1}
+        .speak-box{display:flex;gap:.5rem;align-items:flex-start;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:.5rem  .75rem;margin-top:.75rem}
+        .speak-title{font-size:.8rem;color:#64748b}
+        .speak-text{font-weight:500}
+        .tabs{display:flex;gap:.5rem;margin-bottom:.5rem}
+        .tab{border:none;background:#e2e8f0;border-radius:999px;padding:.35rem .75rem;font-weight:600;color:#334155}
+        .tab.active{background:#334155;color:#fff}
+        .activity-feed{display:flex;flex-direction:column;gap:.5rem}
+        .event{border:1px solid #eee;border-radius:10px;padding:.5rem}
+        .event-meta{display:flex;gap:.5rem;align-items:center;margin-bottom:.25rem}
+        .event-details{white-space:pre-wrap;background:#0f172a;color:#e2e8f0;border-radius:6px;padding:.5rem;overflow:auto}
+    </style>
 </head>
 
 <body>
@@ -27,6 +64,49 @@
         <a class="dismiss">🗙</a>
     </div>
     <script src="_framework/blazor.webassembly.js"></script>
+    <script>
+        // Minimal speech recognition + TTS interop
+        window.voice = (function(){
+            let recognition;
+            let dotnet;
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            const supported = !!SpeechRecognition;
+            function init(dotRef, lang){
+                dotnet = dotRef;
+                if(!supported) return;
+                recognition = new SpeechRecognition();
+                recognition.lang = lang || 'en-US';
+                recognition.interimResults = true;
+                recognition.continuous = false;
+                recognition.onresult = (e)=>{
+                    let final=''; let interim='';
+                    for(let i=e.resultIndex;i<e.results.length;i++){
+                        const res=e.results[i];
+                        if(res.isFinal) final += res[0].transcript;
+                        else interim += res[0].transcript;
+                    }
+                    if(final) dotnet.invokeMethodAsync('OnSpeechResult', final, true);
+                    else if(interim) dotnet.invokeMethodAsync('OnSpeechResult', interim, false);
+                };
+                recognition.onerror = (e)=> dotnet.invokeMethodAsync('OnSpeechError', e.error || 'unknown');
+                recognition.onend = ()=> dotnet.invokeMethodAsync('OnSpeechEnd');
+            }
+            function start(){ if(recognition) recognition.start(); }
+            function stop(){ if(recognition) recognition.stop(); }
+            function ttsSpeak(text){
+                try{
+                    const u=new SpeechSynthesisUtterance(text);
+                    window.speechSynthesis.speak(u);
+                }catch(e){
+                    console.error('TTS error:', e);
+                }
+            }
+            return {
+                init, start, stop, ttsSpeak,
+                supported: ()=> supported && 'speechSynthesis' in window
+            };
+        })();
+    </script>
 </body>
 
 </html>

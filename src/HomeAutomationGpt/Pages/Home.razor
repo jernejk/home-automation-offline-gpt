@@ -1,69 +1,149 @@
-﻿@* Example prompt: Say "It's really cold" and set A/C to 23, TV on and light in living room on as well *@
+﻿@* Voice-first control UI with activity feed for demo clarity *@
 @page "/"
-@using System.Text.Json
-@using System.Text
-@using System.Runtime.Serialization
 @using HomeAutomationGpt.Models
 @using HomeAutomationGpt.Services
+@using Microsoft.JSInterop
+@using System.Linq
+@implements IDisposable
+
+@inject IJSRuntime JS
 
 <PageTitle>Home Automation</PageTitle>
 
-<div class="container">
-    <div class="sidebar">
-        <h3>Devices</h3>
-        <ul>
-            @foreach (var device in Devices)
-            {
-                <li>
-                    <span>@device.Name</span>
-                    <span>@(device.IsOn ? "🟢" : "🔴")</span>
-                    @if (device.Value.HasValue)
-                    {
-                        <span>@device.Value.Value</span>
-                    }
-                </li>
-            }
-        </ul>
-        <input @bind="NewDeviceName" placeholder="Enter device name" class="input-text" />
-        <button @onclick="AddDevice" class="btn">Add Device</button>
-    </div>
-    <div class="main-content">
-        <textarea @bind="Command" placeholder="Enter command" class="textarea"></textarea>
-        <button @onclick="SendCommand" class="btn">Send</button>
-        <div>
-            @if (!string.IsNullOrEmpty(SpeakText))
-            {
-                <h4>Speak:</h4>
-                <p>@SpeakText</p>
-            }
+<div class="ha-grid">
+    <section class="panel devices">
+        <div class="panel-header">
+            <h3>Devices</h3>
+            <div class="add-device">
+                <input @bind="NewDeviceName" placeholder="Add device" class="form-control form-control-sm" />
+                <button class="btn btn-sm btn-primary" @onclick="AddDevice">Add</button>
+            </div>
         </div>
-        <div class="debug-section">
-            <input type="checkbox" @bind="ShowDebug" /> Show debug
-            @if (ShowDebug || IsRequestFailed)
+        <div class="device-list">
+            @foreach (var d in Devices)
             {
-                <div class="debug-box">
-                    <h4>Debug:</h4>
-                    <p>@Debug</p>
-
-                    <h4>Response:</h4>
-                    <pre>
-                        @Response
-                    </pre>
+                <div class="device-card">
+                    <div class="device-row">
+                        <div class="device-name">@d.Name</div>
+                        <div class="device-toggle form-check form-switch">
+                            <input class="form-check-input" type="checkbox" role="switch" checked="@d.IsOn" @onchange="(e)=> ToggleDevice(d, e.Value is bool b && b)" />
+                        </div>
+                    </div>
+                    <div class="device-controls">
+                        @if (SupportsValue(d))
+                        {
+                            <input type="range" class="form-range" min="@GetMin(d)" max="@GetMax(d)" step="@GetStep(d)" value="@GetDisplayValue(d)"
+                                   @oninput="(e)=> ChangeDeviceValue(d, ParseFloat(e.Value))" />
+                            <div class="value-chip">@FormatValue(d)</div>
+                        }
+                    </div>
                 </div>
             }
         </div>
-    </div>
+    </section>
+
+    <section class="panel control">
+        <div class="control-header">
+            <h2>Home Assistant</h2>
+            <div class="voice-controls">
+                <button class="@GetMicButtonClass()" @onclick="ToggleListening" title="@GetMicButtonTitle()">
+                    <span class="@GetMicIconClass()"></span>
+                </button>
+                <div class="@GetVoiceStatusClass()">@GetVoiceStatusText()</div>
+            </div>
+        </div>
+
+        <div class="quick-prompts">
+            @foreach (var qp in QuickPrompts)
+            {
+                <button class="btn btn-sm btn-outline-secondary" @onclick="() => UseQuickPrompt(qp)">@qp</button>
+            }
+        </div>
+
+        <div class="command-box">
+            <textarea class="form-control" rows="4" placeholder="Tell me what to do…" @bind="Command"></textarea>
+            <div class="command-actions">
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="autosend" @bind="AutoSendVoice" />
+                    <label class="form-check-label" for="autosend">Auto-send voice</label>
+                </div>
+                <div class="spacer"></div>
+                <button class="btn btn-primary" @onclick="SendCommand">Send</button>
+            </div>
+        </div>
+
+        @if (!string.IsNullOrWhiteSpace(SpeakText))
+        {
+            <div class="speak-box">
+                <span class="bi bi-megaphone-fill"></span>
+                <div>
+                    <div class="speak-title">Assistant will say</div>
+                    <div class="speak-text">@SpeakText</div>
+                </div>
+            </div>
+        }
+    </section>
+
+    <section class="panel activity">
+        <div class="tabs">
+            <button class="@GetTabClass("activity")" @onclick="@(() => SetActiveTab("activity"))">Activity</button>
+            <button class="@GetTabClass("debug")" @onclick="@(() => SetActiveTab("debug"))">Debug</button>
+            <div style="flex:1"></div>
+            <button class="btn btn-sm btn-outline-danger" @onclick="ClearEvents" disabled="@(Activity.Count == 0)"><span class="bi bi-trash"></span> Clear</button>
+        </div>
+
+        @if (ActiveTab == "activity")
+        {
+            <div class="activity-feed">
+                @foreach (var ev in Activity.AsEnumerable().Reverse())
+                {
+                    <div class="event @ev.Type.ToLower()">
+                        <div class="event-meta">
+                            <span class="badge bg-@GetBadge(ev.Type)">@ev.Type</span>
+                            <span class="time">@ev.Timestamp.ToLocalTime().ToString("HH:mm:ss")</span>
+                        </div>
+                        <div class="event-msg">@ev.Message</div>
+                        @if (!string.IsNullOrWhiteSpace(ev.Details))
+                        {
+                            <pre class="event-details">@ev.Details</pre>
+                        }
+                    </div>
+                }
+            </div>
+        }
+        else
+        {
+            <div class="debug-pane">
+                <div class="form-check mb-2">
+                    <input class="form-check-input" type="checkbox" id="showdbg" @bind="ShowDebug" />
+                    <label class="form-check-label" for="showdbg">Show debug</label>
+                </div>
+                @if (ShowDebug || IsRequestFailed)
+                {
+                    <div class="mb-2"><strong>Debug:</strong> @Debug</div>
+                    <div>
+                        <strong>Raw Response:</strong>
+                        <pre class="event-details">@Response</pre>
+                    </div>
+                }
+            </div>
+        }
+    </section>
 </div>
 
 @code {
     private IHomeAssistanceService _has = new HomeAssistanceServiceV3();
 
-    private List<Device> Devices { get; set; } = new List<Device>
+    private List<Device> Devices { get; set; } = new()
     {
         new Device { Name = "TV" },
         new Device { Name = "Kitchen lights" },
         new Device { Name = "A/C" },
-        new Device { Name = "Living room lights" }
+        new Device { Name = "Living room lights" },
+        new Device { Name = "Bedroom lights" },
+        //new Device { Name = "Heater" },
+        new Device { Name = "Coffee machine" },
+        new Device { Name = "Cleaner Robot" },
     };
 
     private string? NewDeviceName { get; set; }
@@ -74,47 +154,96 @@
     private bool ShowDebug { get; set; } = false;
     private bool IsRequestFailed { get; set; } = false;
 
+    // Voice & activity
+    private bool IsListening { get; set; } = false;
+    private bool VoiceSupported { get; set; } = false;
+    private bool AutoSendVoice { get; set; } = true;
+    private DotNetObjectReference<Home>? _dotRef;
+    private string ActiveTab { get; set; } = "activity";
+
+    private readonly string[] QuickPrompts = new[]
+    {
+        "It's really cold – set A/C to 23 and turn on living room lights",
+        "Movie time: TV on, lights off",
+        "Dinner is ready – announce it",
+        "Good night: turn everything off"
+    };
+
+    private List<LogEvent> Activity { get; set; } = new();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _dotRef = DotNetObjectReference.Create(this);
+            try
+            {
+                await JS.InvokeVoidAsync("voice.init", _dotRef, "en-US");
+                VoiceSupported = await JS.InvokeAsync<bool>("voice.supported");
+            }
+            catch
+            {
+                VoiceSupported = false;
+            }
+            StateHasChanged();
+        }
+    }
+
     private void AddDevice()
     {
         if (!string.IsNullOrWhiteSpace(NewDeviceName))
         {
             Devices.Add(new Device { Name = NewDeviceName });
+            AddEvent("System", $"Added device '{NewDeviceName}'.");
             NewDeviceName = string.Empty;
         }
     }
 
     private async Task SendCommand()
     {
-        Debug = string.Empty; // Clear the debug information before sending a new command
-        Response = string.Empty; // Clear the response before sending a new command
-        SpeakText = string.Empty; // Clear the speak text before sending a new command
+        Debug = string.Empty;
+        Response = string.Empty;
+        SpeakText = string.Empty;
 
         if (string.IsNullOrWhiteSpace(Command))
         {
             Debug = "Command is empty";
+            AddEvent("Error", "Command is empty");
             return;
         }
 
-        DeviceCommandResponse result = await _has.ExecuteCommandAsync(Command, Devices);
-        Response = result.ChatResponse;
-
-        if (!string.IsNullOrWhiteSpace(result.Errors) || result.DeviceActions == null)
+        AddEvent("User", Command);
+        try
         {
-            Debug = result.Errors;
+            var result = await _has.ExecuteCommandAsync(Command, Devices);
+            Response = result.ChatResponse;
 
+            if (!string.IsNullOrWhiteSpace(result.Errors) || result.DeviceActions == null)
+            {
+                Debug = result.Errors;
+                IsRequestFailed = true;
+                ShowDebug = true;
+                AddEvent("Error", "AI returned an error", result.Errors);
+                return;
+            }
+
+            AddEvent("AI", "Parsed actions", result.ChatResponse);
+            UpdateDeviceStates(result.DeviceActions);
+        }
+        catch (Exception ex)
+        {
+            Debug = ex.Message;
             IsRequestFailed = true;
             ShowDebug = true;
-            return;
+            AddEvent("Error", "Failed to execute command", ex.Message);
         }
-
-        UpdateDeviceStates(result.DeviceActions);
     }
 
     private void UpdateDeviceStates(List<DeviceAction> deviceActions)
     {
         try
         {
-            foreach (DeviceAction action in deviceActions)
+            foreach (var action in deviceActions)
             {
                 if (!string.IsNullOrEmpty(action?.Device))
                 {
@@ -127,22 +256,23 @@
                             case "turnon":
                             case "on":
                                 device.IsOn = true;
+                                AddEvent("Action", $"Turned on {device.Name}: {device.IsOn}");
                                 break;
 
                             case "turn off":
                             case "turnoff":
                             case "off":
                                 device.IsOn = false;
-                                device.Value = null; // Clear value when device is turned off
+                                device.Value = null;
+                                AddEvent("Action", $"Turned off {device.Name}");
                                 break;
 
-                            // Sometimes changing temperature responds with "SetTemperature".
-                            // Gemma sometimes uses "Set" instead of "SetValue".
                             case "set":
                             case "setvalue":
                             case "settemperature":
                                 device.Value = action.Value;
-                                device.IsOn = true; // Turn on the device
+                                device.IsOn = true;
+                                AddEvent("Action", $"Set {device.Name} to {action.Value}");
                                 break;
                         }
                     }
@@ -150,35 +280,152 @@
                 else if (action?.Action?.ToLower() == "speak" && !string.IsNullOrWhiteSpace(action.Text))
                 {
                     SpeakText = action.Text;
+                    _ = JS.InvokeVoidAsync("voice.ttsSpeak", SpeakText);
+                    AddEvent("Action", $"Speak: {action.Text}");
                 }
             }
 
-            // Update the UI
             StateHasChanged();
         }
         catch (Exception ex)
         {
             Debug = $"Failed to process response: {ex.Message}";
             IsRequestFailed = true;
-            ShowDebug = true; // Show debug information if an exception occurs
+            ShowDebug = true;
+            AddEvent("Error", "Failed to process response", ex.Message);
         }
     }
 
+    private void ToggleDevice(Device d, bool on)
+    {
+        d.IsOn = on;
+        if (!on) d.Value = null;
+        AddEvent("Action", $"{(on ? "Turned on" : "Turned off")} {d.Name} (manual)");
+    }
+
+    private void ChangeDeviceValue(Device d, float? value)
+    {
+        if (value.HasValue)
+        {
+            d.Value = value.Value;
+            d.IsOn = true;
+            AddEvent("Action", $"Set {d.Name} to {FormatValue(d)} (manual)");
+        }
+    }
+
+    private static float? ParseFloat(object? v)
+        => v is null ? null : float.TryParse(v.ToString(), out var f) ? f : null;
+
+    private string FormatValue(Device d)
+    {
+        if (!d.Value.HasValue) return "";
+        if (IsAC(d)) return $"{d.Value:0}°C";
+        return $"{d.Value:0}";
+    }
+
+    private float GetMin(Device d) => IsAC(d) ? 16 : 0;
+    private float GetMax(Device d) => IsAC(d) ? 30 : 100;
+    private float GetStep(Device d) => IsAC(d) ? 1 : 5;
+    private float GetDisplayValue(Device d) => d.Value ?? (IsAC(d) ? 22 : 50);
+    private bool SupportsValue(Device d) => IsAC(d);
+    private bool IsAC(Device d) => d.Name.Contains("A/C", StringComparison.OrdinalIgnoreCase);
+
     public Device? FindDevice(string deviceName)
     {
-        if (string.IsNullOrWhiteSpace(deviceName))
-        {
-            return null;
-        }
-
-        Device? foundDevice = Devices.FirstOrDefault(d => d.Name.Equals(deviceName, StringComparison.OrdinalIgnoreCase));
-        if (foundDevice != null)
-        {
-            return foundDevice;
-        }
-
-        // Sometimes, for deviceName "A/C" it responds with "AC".
+        if (string.IsNullOrWhiteSpace(deviceName)) return null;
+        var found = Devices.FirstOrDefault(d => d.Name.Equals(deviceName, StringComparison.OrdinalIgnoreCase));
+        if (found != null) return found;
         deviceName = deviceName.Replace("/", string.Empty);
         return Devices.FirstOrDefault(d => d.Name.Replace("/", string.Empty).Equals(deviceName, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private void UseQuickPrompt(string text)
+    {
+        Command = text;
+        _ = SendCommand();
+    }
+
+    private void AddEvent(string type, string message, string? details = null)
+        => Activity.Add(new LogEvent { Type = type, Message = message, Details = details, Timestamp = DateTime.UtcNow });
+
+    private string GetBadge(string type) => type.ToLower() switch
+    {
+        "user" => "primary",
+        "ai" => "success",
+        "action" => "warning",
+        "error" => "danger",
+        _ => "secondary"
+    };
+
+    private void ClearEvents() => Activity.Clear();
+
+    // UI helpers
+    private string GetMicButtonClass() => $"btn btn-lg {(IsListening ? "btn-danger" : "btn-outline-primary")} mic-btn";
+    private string GetMicButtonTitle() => IsListening ? "Stop listening" : "Start listening";
+    private string GetMicIconClass() => $"bi {(IsListening ? "bi-mic-mute-fill" : "bi-mic-fill")}";
+    private string GetVoiceStatusClass() => $"voice-status {(IsListening ? "on" : "off")}";
+    private string GetVoiceStatusText() => IsListening ? "Listening…" : (VoiceSupported ? "Voice ready" : "Voice unsupported");
+    private string GetTabClass(string id) => $"tab {(ActiveTab == id ? "active" : string.Empty)}";
+    private void SetActiveTab(string id) => ActiveTab = id;
+
+    // Voice interop handlers
+    private async Task ToggleListening()
+    {
+        if (!VoiceSupported) return;
+        if (IsListening)
+        {
+            await JS.InvokeVoidAsync("voice.stop");
+            IsListening = false;
+        }
+        else
+        {
+            await JS.InvokeVoidAsync("voice.start");
+            IsListening = true;
+        }
+    }
+
+    [JSInvokable]
+    public async Task OnSpeechResult(string text, bool isFinal)
+    {
+        // Update the command box live; optionally auto-send on final.
+        if (string.IsNullOrWhiteSpace(Command)) Command = text;
+        else Command = (Command?.TrimEnd() + " " + text).Trim();
+
+        if (isFinal && AutoSendVoice)
+        {
+            await SendCommand();
+        }
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    [JSInvokable]
+    public Task OnSpeechError(string error)
+    {
+        AddEvent("Error", "Voice error", error);
+        IsListening = false;
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    [JSInvokable]
+    public Task OnSpeechEnd()
+    {
+        IsListening = false;
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    public class LogEvent
+    {
+        public DateTime Timestamp { get; set; }
+        public string Type { get; set; } = "System";
+        public string Message { get; set; } = string.Empty;
+        public string? Details { get; set; }
+    }
+
+    public void Dispose()
+    {
+        _dotRef?.Dispose();
     }
 }
