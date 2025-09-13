@@ -1,4 +1,5 @@
 ﻿using HomeAutomationGpt.Models;
+using HomeAutomationGpt.Utils;
 using System.Text;
 using System.Text.Json;
 
@@ -61,7 +62,10 @@ public class HomeAssistanceServiceV3 : IHomeAssistanceService
 
                 if (!response.IsSuccessStatusCode)
                 {
-                    return new() { Errors = $"Error: {response.ReasonPhrase}" };
+                    string errorContent = await response.Content.ReadAsStringAsync();
+                    string userFriendlyError = ApiErrorParser.ParseErrorResponse(errorContent, 
+                        $"HTTP {(int)response.StatusCode}: {response.ReasonPhrase}");
+                    return new() { Errors = userFriendlyError };
                 }
 
                 string? responseContent = await response.Content.ReadAsStringAsync();

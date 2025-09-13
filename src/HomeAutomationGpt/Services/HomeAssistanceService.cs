@@ -1,4 +1,5 @@
 ﻿using HomeAutomationGpt.Models;
+using HomeAutomationGpt.Utils;
 using System.Text.Json;
 using System.Text;
 
@@ -38,10 +39,20 @@ public class HomeAssistanceService : IHomeAssistanceService
 
         if (!response.IsSuccessStatusCode)
         {
-            return new() { Errors = $"Error: {response.ReasonPhrase}" };
+            string errorContent = await response.Content.ReadAsStringAsync();
+            string userFriendlyError = ApiErrorParser.ParseErrorResponse(errorContent, 
+                $"HTTP {(int)response.StatusCode}: {response.ReasonPhrase}");
+            return new() { Errors = userFriendlyError };
         }
 
         string? responseContent = await response.Content.ReadAsStringAsync();
+
+        // Check if the response contains an error object even with HTTP 200
+        if (responseContent.Contains("\"error\"") && responseContent.Contains("\"message\""))
+        {
+            string userFriendlyError = ApiErrorParser.ParseErrorResponse(responseContent, "API error occurred");
+            return new() { Errors = userFriendlyError };
+        }
 
         // For demo purposes, allow simple clean up to demonstrate how chaotic LLMs can be.
         string? deviceActionJson = cleanUpJsonWell
@@ -50,6 +61,13 @@ public class HomeAssistanceService : IHomeAssistanceService
 
         if (string.IsNullOrWhiteSpace(deviceActionJson))
         {
+            // If JsonCleanUp failed and we have an error response, parse it properly
+            if (responseContent.Contains("\"error\"") && responseContent.Contains("\"message\""))
+            {
+                string userFriendlyError = ApiErrorParser.ParseErrorResponse(responseContent, "API error occurred");
+                return new() { Errors = userFriendlyError };
+            }
+            
             return new()
             {
                 ChatResponse = deviceActionJson,
@@ -85,14 +103,23 @@ public class HomeAssistanceService : IHomeAssistanceService
             return content;
         }
 
-        // Fetch response from chat.
-        ChatResponse? response = JsonSerializer.Deserialize<ChatResponse>(content);
-        if (response?.choices.Any() != true && string.IsNullOrWhiteSpace(response?.choices[0]?.message?.content))
+        try
         {
+            // Fetch response from chat.
+            ChatResponse? response = JsonSerializer.Deserialize<ChatResponse>(content);
+            if (response?.choices?.Any() != true || string.IsNullOrWhiteSpace(response.choices[0]?.message?.content))
+            {
+                return null;
+            }
+
+            content = response.choices[0].message.content;
+        }
+        catch (JsonException)
+        {
+            // If we can't deserialize as ChatResponse, it might be an error response or malformed JSON
+            // Return null so it gets handled by the error checking in the calling method
             return null;
         }
-
-        content = response.choices[0].message.content;
 
         // Clean up the response content to get valid JSON array.
         // Some SLMs/LLMs makes odd formatting for JSON response.

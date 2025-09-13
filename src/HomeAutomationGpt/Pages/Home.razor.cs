@@ -37,10 +37,7 @@ namespace HomeAutomationGpt.Pages
         private bool IsRequestFailed { get; set; } = false;
 
         // Voice & activity
-        private bool IsListening { get; set; } = false;
-        private bool VoiceSupported { get; set; } = false;
         private bool AutoSendVoice { get; set; } = true;
-        private DotNetObjectReference<Home>? _dotRef;
         private string ActiveTab { get; set; } = "activity";
 
         private readonly string[] QuickPrompts = new[]
@@ -53,23 +50,6 @@ namespace HomeAutomationGpt.Pages
 
         private List<LogEvent> Activity { get; set; } = new();
 
-        protected override async Task OnAfterRenderAsync(bool firstRender)
-        {
-            if (firstRender)
-            {
-                _dotRef = DotNetObjectReference.Create(this);
-                try
-                {
-                    await JS.InvokeVoidAsync("voice.init", _dotRef, "en-US");
-                    VoiceSupported = await JS.InvokeAsync<bool>("voice.supported");
-                }
-                catch
-                {
-                    VoiceSupported = false;
-                }
-                StateHasChanged();
-            }
-        }
 
         private void AddDevice()
         {
@@ -227,6 +207,11 @@ namespace HomeAutomationGpt.Pages
             _ = SendCommand();
         }
 
+        private void HandleVoiceError(string error)
+        {
+            AddEvent("Error", error);
+        }
+
         private void AddEvent(string type, string message, string? details = null)
             => Activity.Add(new LogEvent { Type = type, Message = message, Details = details, Timestamp = DateTime.UtcNow });
 
@@ -242,60 +227,9 @@ namespace HomeAutomationGpt.Pages
         private void ClearEvents() => Activity.Clear();
 
         // UI helpers
-        private string GetMicButtonClass() => $"btn btn-lg {(IsListening ? "btn-danger" : "btn-outline-primary")} mic-btn";
-        private string GetMicButtonTitle() => IsListening ? "Stop listening" : "Start listening";
-        private string GetMicIconClass() => $"bi {(IsListening ? "bi-mic-mute-fill" : "bi-mic-fill")}";
-        private string GetVoiceStatusClass() => $"voice-status {(IsListening ? "on" : "off")}";
-        private string GetVoiceStatusText() => IsListening ? "Listening…" : (VoiceSupported ? "Voice ready" : "Voice unsupported");
         private string GetTabClass(string id) => $"tab {(ActiveTab == id ? "active" : string.Empty)}";
         private void SetActiveTab(string id) => ActiveTab = id;
 
-        // Voice interop handlers
-        private async Task ToggleListening()
-        {
-            if (!VoiceSupported) return;
-            if (IsListening)
-            {
-                await JS.InvokeVoidAsync("voice.stop");
-                IsListening = false;
-            }
-            else
-            {
-                await JS.InvokeVoidAsync("voice.start");
-                IsListening = true;
-            }
-        }
-
-        [JSInvokable]
-        public async Task OnSpeechResult(string text, bool isFinal)
-        {
-            // Update the command box live; optionally auto-send on final.
-            if (string.IsNullOrWhiteSpace(Command)) Command = text;
-            else Command = (Command?.TrimEnd() + " " + text).Trim();
-
-            if (isFinal && AutoSendVoice)
-            {
-                await SendCommand();
-            }
-            StateHasChanged();
-        }
-
-        [JSInvokable]
-        public Task OnSpeechError(string error)
-        {
-            AddEvent("Error", "Voice error", error);
-            IsListening = false;
-            StateHasChanged();
-            return Task.CompletedTask;
-        }
-
-        [JSInvokable]
-        public Task OnSpeechEnd()
-        {
-            IsListening = false;
-            StateHasChanged();
-            return Task.CompletedTask;
-        }
 
         public class LogEvent
         {
@@ -307,7 +241,7 @@ namespace HomeAutomationGpt.Pages
 
         public void Dispose()
         {
-            _dotRef?.Dispose();
+            // Home component no longer manages voice resources directly
         }
     }
 }

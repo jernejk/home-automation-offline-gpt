@@ -1,0 +1,11 @@
+﻿<div class="voice-controls">
+    <button class="@GetMicButtonClass()" @onclick="ToggleListening" title="@GetMicButtonTitle()">
+        <span class="@GetMicIconClass()"></span>
+    </button>
+    <div class="@GetVoiceStatusClass()">@GetVoiceStatusText()</div>
+</div>
+
+<div class="form-check">
+    <input class="form-check-input" type="checkbox" id="autosend-voice" @bind="AutoSendVoice" @bind:after="@(() => AutoSendVoiceChanged.InvokeAsync(AutoSendVoice))" />
+    <label class="form-check-label" for="autosend-voice">Auto-send voice</label>
+</div>

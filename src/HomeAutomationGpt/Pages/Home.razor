@@ -1,6 +1,7 @@
 ﻿@* Voice-first control UI with activity feed for demo clarity *@
 @page "/"
-
+@using System.Linq
+@using HomeAutomationGpt.Components
 <PageTitle>Home Automation</PageTitle>
 
 <div class="ha-grid">
@@ -38,12 +39,10 @@
     <section class="panel control">
         <div class="control-header">
             <h2>Home Assistant</h2>
-            <div class="voice-controls">
-                <button class="@GetMicButtonClass()" @onclick="ToggleListening" title="@GetMicButtonTitle()">
-                    <span class="@GetMicIconClass()"></span>
-                </button>
-                <div class="@GetVoiceStatusClass()">@GetVoiceStatusText()</div>
-            </div>
+            <VoiceControl @bind-Command="Command" 
+                         @bind-AutoSendVoice="AutoSendVoice" 
+                         OnSendCommand="SendCommand" 
+                         OnError="HandleVoiceError" />
         </div>
 
         <div class="quick-prompts">
@@ -56,10 +55,6 @@
         <div class="command-box">
             <textarea class="form-control" rows="4" placeholder="Tell me what to do…" @bind="Command"></textarea>
             <div class="command-actions">
-                <div class="form-check">
-                    <input class="form-check-input" type="checkbox" id="autosend" @bind="AutoSendVoice" />
-                    <label class="form-check-label" for="autosend">Auto-send voice</label>
-                </div>
                 <div class="spacer"></div>
                 <button class="btn btn-primary" @onclick="SendCommand">Send</button>
             </div>
