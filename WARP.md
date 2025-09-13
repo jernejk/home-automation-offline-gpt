@@ -29,20 +29,14 @@ The codebase contains 5 different service implementations (`HomeAssistanceServic
 ```bash
 # Run the application (from src/HomeAutomationGpt directory)
 cd src/HomeAutomationGpt
-Dotnet run
+dotnet run
 
 # Build the solution
 cd src
-Dotnet build HomeAutomationGpt.sln
+dotnet build HomeAutomationGpt.sln
 
 # Restore packages
-Dotnet restore
-```
-
-### Development Setup
-```bash
-# Ensure .NET 9 SDK is installed
-Dotnet --version  # Should show 9.x
+dotnet restore
 
 # Alternative: Install .NET 9 SDK on Windows
 winget install dotnet-sdk-9
