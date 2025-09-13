@@ -54,44 +54,6 @@ builder.Services.AddChatClient(chatClient)
     .UseFunctionInvocation()
     .UseLogging();
 
-builder.Services.AddSingleton<IMcpClient>(sp =>
-{
-    var config = sp.GetRequiredService<IConfiguration>();
-    var loggerFactory = sp.GetRequiredService<ILoggerFactory>();
-
-    var uriStr = config["HomeAssistant:HASS"] ?? config["McpServers:HASS"]; // Prefer HomeAssistant:HASS, fallback to McpServers:HASS
-    if (string.IsNullOrWhiteSpace(uriStr))
-    {
-        // If not configured, return a no-op client by pointing to a non-routable endpoint (won't be used in the demo by default)
-        uriStr = "http://127.0.0.1:9";
-    }
-    var uri = new Uri(uriStr);
-    var accessToken = config["HomeAssistant:AccessToken"];
-
-    var clientTransportOptions = new SseClientTransportOptions()
-    {
-        // Update endpoint to use Home Assistant MCP server proxy
-        Endpoint = new Uri($"{uri.AbsoluteUri.TrimEnd('/')}/api/mcp"),
-        AdditionalHeaders = accessToken != null ? new Dictionary<string, string> {
-            { "Authorization", $"Bearer {accessToken}" }
-        } : null
-        // If OAuth is needed, configure it here. For now, only Bearer token is set.
-    };
-    
-    var clientTransport = new SseClientTransport(clientTransportOptions, loggerFactory);
-    var clientOptions = new McpClientOptions()
-    {
-        ClientInfo = new Implementation()
-        {
-            // TODO: Update this with correct values for HASS MCP Proxy
-            Name = "MCP Todo Client",
-            Version = "1.0.0",
-        }
-    };
-
-    return McpClientFactory.CreateAsync(clientTransport, clientOptions, loggerFactory).GetAwaiter().GetResult();
-});
-
 builder.Services.AddScoped(sp => new HttpClient { BaseAddress = new Uri(builder.HostEnvironment.BaseAddress) });
 
 await builder.Build().RunAsync();
