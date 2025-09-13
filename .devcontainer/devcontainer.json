@@ -1,0 +1,23 @@
+{
+  "name": "Home Automation Offline GPT",
+  "dockerFile": "Dockerfile",
+  "context": "../src/HomeAutomationGpt",
+  "postCreateCommand": "dotnet --info",
+  "features": {
+    "ghcr.io/devcontainers/features/dotnet:2": {
+      "version": "9.0"
+    }
+  },
+  "forwardPorts": [8080],
+  "remoteUser": "vscode",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-dotnettools.csharp",
+        "ms-vscode.vscode-typescript-next",
+        "editorconfig.editorconfig",
+        "ms-azuretools.vscode-docker"
+      ]
+    }
+  }
+}
