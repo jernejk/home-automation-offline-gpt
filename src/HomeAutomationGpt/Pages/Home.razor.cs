@@ -16,6 +16,9 @@ namespace HomeAutomationGpt.Pages
 
         [Inject]
         private Microsoft.Extensions.AI.IChatClient ChatClient { get; set; } = default!;
+        
+        [Inject]
+        private Dictionary<string, ModelContextProtocol.Client.IMcpClient> McpClients { get; set; } = default!;
 
         private string _selectedServiceVersion = "V5";
         private string SelectedServiceVersion
@@ -38,7 +41,8 @@ namespace HomeAutomationGpt.Pages
             ["V2"] = new("V2 - Retry Logic", "Adds retry mechanism (3 attempts) on top of V1. Improves reliability for unstable responses."),
             ["V3"] = new("V3 - Self-Validation", "Uses AI to validate its own responses. Makes additional API calls for quality checking."),
             ["V4"] = new("V4 - Modern Client", "Uses Microsoft.Extensions.AI client but still relies on JSON parsing for actions."),
-            ["V5"] = new("V5 - Function Calling (Recommended)", "Native function calling with Microsoft.Extensions.AI. Most reliable and modern approach.")
+            ["V5"] = new("V5 - Function Calling (Recommended)", "Native function calling with Microsoft.Extensions.AI. Most reliable and modern approach."),
+            ["V6"] = new("V6 - MCP Integration (Advanced)", "Function calling + MCP integration. Adds web search and external tool capabilities via Model Context Protocol.")
         };
 
         private IHomeAssistanceService _has => SelectedServiceVersion switch
@@ -48,6 +52,7 @@ namespace HomeAutomationGpt.Pages
             "V3" => new HomeAssistanceServiceV3(),
             "V4" => new HomeAssistanceServiceV4(ChatClient),
             "V5" => new HomeAssistanceServiceV5(ChatClient),
+            "V6" => new HomeAssistanceServiceV6(ChatClient, McpClients),
             _ => new HomeAssistanceServiceV5(ChatClient)
         };
 
@@ -170,6 +175,11 @@ namespace HomeAutomationGpt.Pages
                                     device.Value = action.Value;
                                     device.IsOn = true;
                                     AddEvent("Action", $"Set {device.Name} to {action.Value}");
+                                    break;
+
+                                case "search":
+                                    // Search action without a device doesn't make sense
+                                    AddEvent("Search", $"Web search: {action.Text}");
                                     break;
                             }
                         }

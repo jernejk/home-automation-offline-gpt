@@ -1,11 +1,10 @@
 using HomeAutomationGpt;
+using HomeAutomationGpt.Extensions;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
 using Microsoft.Extensions.AI;
 using OpenAI;
 using System.ClientModel;
-using ModelContextProtocol.Client;
-using ModelContextProtocol.Protocol;
 
 var builder = WebAssemblyHostBuilder.CreateDefault(args);
 builder.RootComponents.Add<App>("#app");
@@ -53,6 +52,10 @@ else
 builder.Services.AddChatClient(chatClient)
     .UseFunctionInvocation()
     .UseLogging();
+
+// Register MCP clients from configuration  
+var loggerFactory = LoggerFactory.Create(builder => { });
+builder.Services.AddMcpClients(builder.Configuration, loggerFactory);
 
 builder.Services.AddScoped(sp => new HttpClient { BaseAddress = new Uri(builder.HostEnvironment.BaseAddress) });
 
