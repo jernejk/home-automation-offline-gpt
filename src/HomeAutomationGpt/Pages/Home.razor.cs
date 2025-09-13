@@ -14,7 +14,10 @@ namespace HomeAutomationGpt.Pages
         [Inject]
         private IJSRuntime JS { get; set; } = default!;
 
-        private IHomeAssistanceService _has = new HomeAssistanceServiceV3();
+        [Inject]
+        private Microsoft.Extensions.AI.IChatClient ChatClient { get; set; } = default!;
+
+        private IHomeAssistanceService _has => new HomeAssistanceServiceV5(ChatClient);
 
         private List<Device> Devices { get; set; } = new()
         {
