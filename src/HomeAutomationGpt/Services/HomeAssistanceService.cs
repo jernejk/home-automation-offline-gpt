@@ -7,21 +7,26 @@ namespace HomeAutomationGpt.Services;
 
 public class HomeAssistanceService : IHomeAssistanceService
 {
-    public const string ChatUrl = "http://localhost:1234/v1/chat/completions";
+    public static string ChatUrl = "http://localhost:1234/v1/chat/completions";
+    public static Dictionary<string, string>? AdditionalHeaders { get; set; }
 
-    public async Task<DeviceCommandResponse> ExecuteCommandAsync(string command, List<Device> devices, bool cleanUpJsonWell = true)
+    public async Task<DeviceCommandResponse> ExecuteCommandAsync(string command, List<Device> devices, bool cleanUpJsonWell = true, string? systemPrompt = null)
     {
-        var systemContent = "You're a home assistant AI. Here are the list of supported devices: " +
+        var trace = new List<TraceEvent>();
+        var systemContent = systemPrompt ?? (
+                            "You're a home assistant AI. Here are the list of supported devices: " +
                             string.Join(", ", devices.Select(d => d.Name)) + ". " +
                             "Available commands: On, Off, Speak, SetValue\n" +
                             "You always reply only with a JSON response with a list of commands, do not add any additional text. Example: \n" +
                             "```json" +
                             "[{ \"Device\": \"TV\", \"Action\": \"On\" }, {\"Action\": \"Speak\", \"Text\": \"Dinner is ready\"}, {\"Action\":\"SetValue\", \"Device\": \"A/C\", \"Value\": 18 }]" +
-                            "```";
+                            "```");
+        trace.Add(new TraceEvent { Kind = "SystemPrompt", Summary = "System prompt sent", Details = systemContent });
+        trace.Add(new TraceEvent { Kind = "UserPrompt", Summary = "User command", Details = command });
 
         var requestContent = new
         {
-            model = "model-identifier",
+            model = "qwen/qwen3-coder-30b",
             messages = new[]
             {
                 new { role = "system", content = systemContent },
@@ -35,7 +40,19 @@ public class HomeAssistanceService : IHomeAssistanceService
         StringContent jsonContent = new(JsonSerializer.Serialize(requestContent), Encoding.UTF8, "application/json");
 
         using HttpClient httpClient = new();
-        HttpResponseMessage response = await httpClient.PostAsync(ChatUrl, jsonContent);
+        using var req = new HttpRequestMessage(HttpMethod.Post, ChatUrl) { Content = jsonContent };
+        if (AdditionalHeaders != null)
+        {
+            foreach (var kv in AdditionalHeaders)
+            {
+                // Avoid duplicates
+                if (!req.Headers.TryAddWithoutValidation(kv.Key, kv.Value))
+                {
+                    req.Content?.Headers.TryAddWithoutValidation(kv.Key, kv.Value);
+                }
+            }
+        }
+        HttpResponseMessage response = await httpClient.SendAsync(req);
 
         if (!response.IsSuccessStatusCode)
         {
@@ -46,6 +63,7 @@ public class HomeAssistanceService : IHomeAssistanceService
         }
 
         string? responseContent = await response.Content.ReadAsStringAsync();
+        trace.Add(new TraceEvent { Kind = "ModelResponse", Summary = "Raw model response", Details = responseContent });
 
         // Check if the response contains an error object even with HTTP 200
         if (responseContent.Contains("\"error\"") && responseContent.Contains("\"message\""))
@@ -71,27 +89,37 @@ public class HomeAssistanceService : IHomeAssistanceService
             return new()
             {
                 ChatResponse = deviceActionJson,
-                Errors = "Incorrect response from chat API"
+                Errors = "Incorrect response from chat API",
+                Trace = trace
             };
         }
 
         try
         {
             List<DeviceAction>? deviceActions = JsonSerializer.Deserialize<List<DeviceAction>>(deviceActionJson);
+            if (deviceActions != null)
+            {
+                foreach (var a in deviceActions)
+                {
+                    trace.Add(new TraceEvent { Kind = "ActionQueued", Summary = $"{a.Action} -> {a.Device}", Details = System.Text.Json.JsonSerializer.Serialize(a) });
+                }
+            }
 
             return new()
             {
                 ChatResponse = deviceActionJson,
-                DeviceActions = deviceActions
+                DeviceActions = deviceActions,
+                Trace = trace
             };
         }
         catch (Exception ex)
         {
-
+            trace.Add(new TraceEvent { Kind = "Error", Summary = "Failed to parse actions", Details = ex.Message });
             return new()
             {
                 ChatResponse = deviceActionJson,
-                Errors = ex.Message
+                Errors = ex.Message,
+                Trace = trace
             };
         }
     }

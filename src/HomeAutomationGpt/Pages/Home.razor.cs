@@ -14,7 +14,42 @@ namespace HomeAutomationGpt.Pages
         [Inject]
         private IJSRuntime JS { get; set; } = default!;
 
-        private IHomeAssistanceService _has = new HomeAssistanceServiceV3();
+        [Inject]
+        private Microsoft.Extensions.AI.IChatClient ChatClient { get; set; } = default!;
+
+        private string _selectedServiceVersion = "V5";
+        private string SelectedServiceVersion
+        {
+            get => _selectedServiceVersion;
+            set
+            {
+                if (_selectedServiceVersion != value)
+                {
+                    _selectedServiceVersion = value;
+                    AddEvent("System", $"Switched to AI Service {value}");
+                    StateHasChanged();
+                }
+            }
+        }
+
+        private Dictionary<string, ServiceInfo> AvailableServices { get; } = new()
+        {
+            ["V1"] = new("V1 - Basic JSON Parsing", "Direct HTTP calls with manual JSON cleanup. Shows raw challenges of LLM output parsing."),
+            ["V2"] = new("V2 - Retry Logic", "Adds retry mechanism (3 attempts) on top of V1. Improves reliability for unstable responses."),
+            ["V3"] = new("V3 - Self-Validation", "Uses AI to validate its own responses. Makes additional API calls for quality checking."),
+            ["V4"] = new("V4 - Modern Client", "Uses Microsoft.Extensions.AI client but still relies on JSON parsing for actions."),
+            ["V5"] = new("V5 - Function Calling (Recommended)", "Native function calling with Microsoft.Extensions.AI. Most reliable and modern approach.")
+        };
+
+        private IHomeAssistanceService _has => SelectedServiceVersion switch
+        {
+            "V1" => new HomeAssistanceService(),
+            "V2" => new HomeAssistanceServiceV2(),
+            "V3" => new HomeAssistanceServiceV3(),
+            "V4" => new HomeAssistanceServiceV4(ChatClient),
+            "V5" => new HomeAssistanceServiceV5(ChatClient),
+            _ => new HomeAssistanceServiceV5(ChatClient)
+        };
 
         private List<Device> Devices { get; set; } = new()
         {
@@ -229,7 +264,15 @@ namespace HomeAutomationGpt.Pages
         // UI helpers
         private string GetTabClass(string id) => $"tab {(ActiveTab == id ? "active" : string.Empty)}";
         private void SetActiveTab(string id) => ActiveTab = id;
+        
+        private string GetCurrentServiceDescription()
+        {
+            return AvailableServices.TryGetValue(SelectedServiceVersion, out var service) 
+                ? service.Description 
+                : "Unknown service version.";
+        }
 
+        public record ServiceInfo(string Name, string Description);
 
         public class LogEvent
         {

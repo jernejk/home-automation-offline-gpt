@@ -44,6 +44,21 @@
                          OnSendCommand="SendCommand" 
                          OnError="HandleVoiceError" />
         </div>
+        
+        <div class="service-selector mb-3">
+            <div class="d-flex align-items-center gap-3">
+                <label for="serviceVersion" class="form-label mb-0 fw-bold">AI Service Version:</label>
+                <select @bind="SelectedServiceVersion" class="form-select form-select-sm" id="serviceVersion" style="width: auto;">
+                    @foreach (var service in AvailableServices)
+                    {
+                        <option value="@service.Key">@service.Value.Name</option>
+                    }
+                </select>
+            </div>
+            <div class="service-description mt-2">
+                <small class="text-muted">@GetCurrentServiceDescription()</small>
+            </div>
+        </div>
 
         <div class="quick-prompts">
             @foreach (var qp in QuickPrompts)

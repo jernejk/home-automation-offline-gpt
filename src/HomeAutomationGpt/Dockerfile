@@ -1,19 +1,19 @@
 # Stage 1: Build the application
-FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
 
 WORKDIR /src
 
-# Copy the csproj file and restore the dependencies
-COPY *.csproj .
-RUN dotnet restore
+# Copy the csproj file and restore the dependencies (better Docker layer caching)
+COPY HomeAutomationGpt.csproj ./
+RUN dotnet restore HomeAutomationGpt.csproj --nologo
 
 # Copy the rest of the application code
 COPY . .
 
 # Build the application
-RUN dotnet publish -c Release -o /app
+RUN dotnet publish HomeAutomationGpt.csproj -c Release -o /app --nologo
 
-# Stage 2: Serve the application
+# Stage 2: Serve the application (static files)
 FROM nginx:alpine
 
 COPY --from=build /app/wwwroot /usr/share/nginx/html
