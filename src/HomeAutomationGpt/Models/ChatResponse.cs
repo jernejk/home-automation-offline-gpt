@@ -2,16 +2,16 @@
 
 public class ChatResponse
 {
-    public List<Choice> choices { get; set; }
+    public required List<Choice> choices { get; set; }
 
     public class Choice
     {
-        public Message message { get; set; }
+        public required Message message { get; set; }
     }
 
     public class Message
     {
-        public string role { get; set; }
-        public string content { get; set; }
+        public required string role { get; set; }
+        public required string content { get; set; }
     }
 }
