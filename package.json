@@ -1,0 +1,7 @@
+{
+  "name": "home-automation-offline-gpt-root",
+  "private": true,
+  "devDependencies": {
+    "@playwright/test": "^1.47.0"
+  }
+}

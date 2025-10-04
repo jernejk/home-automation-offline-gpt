@@ -2,8 +2,8 @@
 
 public class DeviceAction
 {
-    public string Action { get; set; }
-    public string Device { get; set; }
+    public required string Action { get; set; }
+    public required string Device { get; set; }
     public string? Text { get; set; }
     public float? Value { get; set; }
 }
