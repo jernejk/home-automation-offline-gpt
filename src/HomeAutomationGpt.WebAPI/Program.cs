@@ -39,7 +39,21 @@ builder.Services.AddSingleton<McpClientManager>();
 builder.Services.AddSingleton<IReadOnlyDictionary<string, IMcpClient>>(
     sp => sp.GetRequiredService<McpClientManager>().GetClientsAsync().GetAwaiter().GetResult());
 
+// Add CORS for Blazor WASM client
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("BlazorWasm", policy =>
+    {
+        policy.WithOrigins("http://localhost:5069", "https://localhost:5069")
+              .AllowAnyHeader()
+              .AllowAnyMethod();
+    });
+});
+
 var app = builder.Build();
+
+// Use CORS middleware
+app.UseCors("BlazorWasm");
 
 app.MapGet("/api/mcp", (IReadOnlyDictionary<string, IMcpClient> mcpClients) =>
     Results.Ok(mcpClients.Keys));
