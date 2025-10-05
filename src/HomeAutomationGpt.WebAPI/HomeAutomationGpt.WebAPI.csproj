@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.AI" Version="9.9.1" />
+    <PackageReference Include="Microsoft.Extensions.AI.Ollama" Version="9.7.0-preview.1.25356.2" />
+    <PackageReference Include="Microsoft.Extensions.AI.OpenAI" Version="9.9.1-preview.1.25474.6" />
+    <PackageReference Include="ModelContextProtocol" Version="0.3.0-preview.4" />
+    <PackageReference Include="OpenAI" Version="2.5.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../HomeAutomationGpt.Core/HomeAutomationGpt.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="../HomeAutomationGpt.Universal/Mcp/McpClientManager.cs" Link="Mcp/McpClientManager.cs" />
+    <Compile Include="../HomeAutomationGpt.Universal/Mcp/McpConfiguration.cs" Link="Mcp/McpConfiguration.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="mcp.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+</Project>
